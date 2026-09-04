@@ -1,13 +1,14 @@
 require('dotenv').config();
 const express = require('express');
 const { Client, GatewayIntentBits } = require('discord.js');
-const { WebcastPushConnection } = require('tiktok-live-connector');
+const { TikTokLiveConnection, SignConfig } = require('tiktok-live-connector');
 const axios = require('axios');
 
 const {
   DISCORD_TOKEN,
   CHANNEL_ID,
   TIKTOK_USERNAME,
+  SIGN_API_KEY,
   CHECK_INTERVAL_MS = 120000,
   PORT = 3000,
 } = process.env;
@@ -15,6 +16,11 @@ const {
 if (!DISCORD_TOKEN || !CHANNEL_ID || !TIKTOK_USERNAME) {
   console.error('Thiếu DISCORD_TOKEN / CHANNEL_ID / TIKTOK_USERNAME trong biến môi trường');
   process.exit(1);
+}
+
+// Nếu có API key Euler Stream (free tại eulerstream.com) thì dùng, giúp ổn định hơn
+if (SIGN_API_KEY) {
+  SignConfig.apiKey = SIGN_API_KEY;
 }
 
 const client = new Client({
@@ -31,7 +37,7 @@ app.listen(PORT, () => console.log(`Web server chạy ở port ${PORT}`));
 
 // ---------------- Theo dõi LIVE ----------------
 function startLiveWatcher() {
-  const tiktokLive = new WebcastPushConnection(TIKTOK_USERNAME);
+  const tiktokLive = new TikTokLiveConnection(TIKTOK_USERNAME);
   let reconnectTimer = null;
 
   const tryConnect = () => {
