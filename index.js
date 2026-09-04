@@ -37,7 +37,10 @@ app.listen(PORT, () => console.log(`Web server chạy ở port ${PORT}`));
 
 // ---------------- Theo dõi LIVE ----------------
 function startLiveWatcher() {
-  const tiktokLive = new TikTokLiveConnection(TIKTOK_USERNAME);
+  const tiktokLive = new TikTokLiveConnection(TIKTOK_USERNAME, {
+    processInitialData: false,
+    fetchRoomInfoOnConnect: true,
+  });
   let reconnectTimer = null;
 
   const tryConnect = () => {
