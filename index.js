@@ -9,9 +9,13 @@ const {
   CHANNEL_ID,
   TIKTOK_USERNAME,
   SIGN_API_KEY,
+  ROLE_ID,
   CHECK_INTERVAL_MS = 120000,
   PORT = 3000,
 } = process.env;
+
+// Nếu có ROLE_ID thì tạo sẵn chuỗi ping, không có thì để trống (không ping)
+const rolePing = ROLE_ID ? `<@&${ROLE_ID}> ` : '';
 
 if (!DISCORD_TOKEN || !CHANNEL_ID || !TIKTOK_USERNAME) {
   console.error('Thiếu DISCORD_TOKEN / CHANNEL_ID / TIKTOK_USERNAME trong biến môi trường');
@@ -54,7 +58,9 @@ function startLiveWatcher() {
     try {
       const channel = await client.channels.fetch(CHANNEL_ID);
       const liveUrl = `https://www.tiktok.com/@${TIKTOK_USERNAME}/live`;
-      const msg = await channel.send(`✅ **${TIKTOK_USERNAME}** đang LIVE!\n${liveUrl}`);
+      const msg = await channel.send(
+        `${rolePing}✅ **${TIKTOK_USERNAME}** đang LIVE!\n${liveUrl}`
+      );
       liveMessageId = msg.id;
     } catch (err) {
       console.error('Lỗi gửi thông báo live:', err.message);
@@ -135,7 +141,9 @@ async function checkNewVideo() {
     if (latest.id !== lastVideoId) {
       lastVideoId = latest.id;
       const channel = await client.channels.fetch(CHANNEL_ID);
-      await channel.send(`🎬 **${TIKTOK_USERNAME}** vừa đăng video mới!\n${latest.url}`);
+      await channel.send(
+        `${rolePing}🎬 **${TIKTOK_USERNAME}** vừa đăng video mới!\n${latest.url}`
+      );
     }
   } catch (err) {
     console.error('Lỗi check video mới:', err.message);
