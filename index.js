@@ -9,13 +9,9 @@ const {
   CHANNEL_ID,
   TIKTOK_USERNAME,
   SIGN_API_KEY,
-  ROLE_ID,
   CHECK_INTERVAL_MS = 120000,
   PORT = 3000,
 } = process.env;
-
-// Nếu có ROLE_ID thì tạo sẵn chuỗi ping, không có thì để trống (không ping)
-const rolePing = ROLE_ID ? `<@&${ROLE_ID}> ` : '';
 
 if (!DISCORD_TOKEN || !CHANNEL_ID || !TIKTOK_USERNAME) {
   console.error('Thiếu DISCORD_TOKEN / CHANNEL_ID / TIKTOK_USERNAME trong biến môi trường');
@@ -39,30 +35,35 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot dang chay'));
 app.listen(PORT, () => console.log(`Web server chạy ở port ${PORT}`));
 
-// ---------------- Theo dõi LIVE (polling, đáng tin cậy hơn websocket event) ----------------
-let isCurrentlyLive = false;
+// ---------------- Theo dõi LIVE ----------------
+function startLiveWatcher() {
+  const tiktokLive = new TikTokLiveConnection(TIKTOK_USERNAME, {
+    processInitialData: false,
+    fetchRoomInfoOnConnect: true,
+  });
+  let reconnectTimer = null;
 
-async function checkLiveStatus() {
-  try {
-    const connection = new TikTokLiveConnection(TIKTOK_USERNAME, {
-      processInitialData: false,
+  const tryConnect = () => {
+    tiktokLive.connect().catch(() => {
+      reconnectTimer = setTimeout(tryConnect, 30000); // chưa live, thử lại sau 30s
     });
-    const live = await connection.fetchIsLive();
+  };
 
-    if (live && !isCurrentlyLive) {
-      // vừa chuyển sang trạng thái LIVE
-      isCurrentlyLive = true;
-      console.log(`[LIVE] ${TIKTOK_USERNAME} đang live`);
+  tiktokLive.on('connected', async () => {
+    console.log(`[LIVE] ${TIKTOK_USERNAME} đang live`);
+    try {
       const channel = await client.channels.fetch(CHANNEL_ID);
       const liveUrl = `https://www.tiktok.com/@${TIKTOK_USERNAME}/live`;
-      const msg = await channel.send(
-        `${rolePing}✅ **${TIKTOK_USERNAME}** đang LIVE!\n${liveUrl}`
-      );
+      const msg = await channel.send(`✅ **${TIKTOK_USERNAME}** đang LIVE!\n${liveUrl}`);
       liveMessageId = msg.id;
-    } else if (!live && isCurrentlyLive) {
-      // vừa hết live
-      isCurrentlyLive = false;
-      console.log(`[LIVE] ${TIKTOK_USERNAME} đã hết live`);
+    } catch (err) {
+      console.error('Lỗi gửi thông báo live:', err.message);
+    }
+  });
+
+  tiktokLive.on('streamEnd', async () => {
+    console.log(`[LIVE] ${TIKTOK_USERNAME} đã hết live`);
+    try {
       if (liveMessageId) {
         const channel = await client.channels.fetch(CHANNEL_ID);
         const msg = await channel.messages.fetch(liveMessageId).catch(() => null);
@@ -74,10 +75,20 @@ async function checkLiveStatus() {
         }
         liveMessageId = null;
       }
+    } catch (err) {
+      console.error('Lỗi cập nhật tin nhắn live:', err.message);
+    } finally {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(tryConnect, 30000);
     }
-  } catch (err) {
-    console.error('Lỗi check live:', err.message);
-  }
+  });
+
+  tiktokLive.on('disconnected', () => {
+    // phòng trường hợp mất kết nối ngoài ý muốn (không phải do hết live)
+    if (!reconnectTimer) reconnectTimer = setTimeout(tryConnect, 30000);
+  });
+
+  tryConnect();
 }
 
 // ---------------- Theo dõi VIDEO MỚI ----------------
@@ -124,22 +135,17 @@ async function checkNewVideo() {
     if (latest.id !== lastVideoId) {
       lastVideoId = latest.id;
       const channel = await client.channels.fetch(CHANNEL_ID);
-      await channel.send(
-        `${rolePing}🎬 **${TIKTOK_USERNAME}** vừa đăng video mới!\n${latest.url}`
-      );
+      await channel.send(`🎬 **${TIKTOK_USERNAME}** vừa đăng video mới!\n${latest.url}`);
     }
   } catch (err) {
     console.error('Lỗi check video mới:', err.message);
   }
 }
 
-const LIVE_CHECK_INTERVAL_MS = 60000; // check live mỗi 1 phút
-
 client.once('ready', () => {
   console.log(`Bot online: ${client.user.tag}`);
-  checkLiveStatus();
+  startLiveWatcher();
   checkNewVideo();
-  setInterval(checkLiveStatus, LIVE_CHECK_INTERVAL_MS);
   setInterval(checkNewVideo, Number(CHECK_INTERVAL_MS));
 });
 
